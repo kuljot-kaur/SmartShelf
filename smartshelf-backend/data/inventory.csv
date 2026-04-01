@@ -1,0 +1,31 @@
+name,category,qty,unit,price,expiry_date,added_date,status,discount_pct
+Whole Milk,Dairy,40,liters,55,2026-03-26,2026-03-20,expired,0
+Paneer,Dairy,15,kg,120,2026-03-27,2026-03-24,expiring_soon,50
+Curd,Dairy,30,kg,45,2026-03-28,2026-03-25,expiring_soon,25
+Butter,Dairy,20,kg,95,2026-03-29,2026-03-25,expiring_soon,25
+Cheese Slices,Dairy,25,packets,110,2026-03-31,2026-03-24,expiring_soon,10
+Cream,Dairy,18,liters,80,2026-04-05,2026-03-25,safe,0
+Flavoured Yogurt,Dairy,22,units,60,2026-04-08,2026-03-26,safe,0
+Skimmed Milk,Dairy,35,liters,50,2026-04-10,2026-03-26,safe,0
+Tomatoes,Vegetables,60,kg,40,2026-03-26,2026-03-22,expired,0
+Spinach,Vegetables,20,kg,30,2026-03-27,2026-03-25,expiring_soon,50
+Capsicum,Vegetables,35,kg,55,2026-03-29,2026-03-25,expiring_soon,25
+Carrots,Vegetables,50,kg,35,2026-04-01,2026-03-24,expiring_soon,10
+Onions,Vegetables,80,kg,25,2026-04-10,2026-03-20,safe,0
+Potatoes,Vegetables,100,kg,20,2026-04-15,2026-03-18,safe,0
+Brown Bread,Bakery,30,packets,35,2026-03-26,2026-03-24,expired,0
+Sourdough Loaf,Bakery,12,units,80,2026-03-28,2026-03-25,expiring_soon,25
+Croissants,Bakery,18,units,45,2026-03-30,2026-03-26,expiring_soon,10
+Multigrain Bread,Bakery,25,packets,40,2026-04-02,2026-03-25,expiring_soon,10
+Dinner Rolls,Bakery,40,packets,30,2026-04-12,2026-03-24,safe,0
+Basmati Rice,Grains,200,kg,120,2027-01-01,2026-03-01,safe,0
+Whole Wheat Flour,Grains,150,kg,55,2026-12-01,2026-03-10,safe,0
+Oats,Grains,80,kg,90,2026-03-26,2026-03-20,expired,0
+Quinoa,Grains,40,kg,200,2026-09-01,2026-03-15,safe,0
+Chickpeas,Grains,60,kg,85,2026-08-01,2026-03-12,safe,0
+Orange Juice,Beverages,50,liters,90,2026-03-27,2026-03-24,expiring_soon,50
+Green Tea,Beverages,60,packets,150,2026-06-01,2026-03-10,safe,0
+Coconut Water,Beverages,45,liters,60,2026-04-03,2026-03-22,expiring_soon,10
+Mango Juice,Beverages,30,liters,75,2026-05-01,2026-03-15,safe,0
+Potato Chips,Snacks,80,packets,30,2026-07-01,2026-03-10,safe,0
+Mixed Nuts,Snacks,40,packets,80,2026-06-15,2026-03-12,safe,0
