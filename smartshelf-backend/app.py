@@ -1,28 +1,62 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import date, datetime
+import csv
+import uuid
 
-from supabase_client import supabase
 from logic import get_days_to_expiry, get_status, get_discount_pct
 from forecast import get_forecast
 
 app = Flask(__name__)
 CORS(app)
 
+INVENTORY = []
+REDISTRIBUTION_LOG = []
+
+def initialize_dummy_data():
+    INVENTORY.clear()
+    REDISTRIBUTION_LOG.clear()
+    try:
+        with open('data/inventory.csv', 'r') as f:
+            reader = csv.DictReader(f)
+            today = date.today()
+            # Anchor date from the CSV
+            anchor_date = date(2026, 3, 25)
+            offset = today - anchor_date
+
+            for row in reader:
+                item_id = str(uuid.uuid4())
+                
+                if row.get('expiry_date'):
+                    orig_exp = date.fromisoformat(row['expiry_date'])
+                    row['expiry_date'] = (orig_exp + offset).isoformat()
+                if row.get('added_date'):
+                    orig_add = date.fromisoformat(row['added_date'])
+                    row['added_date'] = (orig_add + offset).isoformat()
+
+                row['id'] = item_id
+                row['qty'] = float(row['qty'])
+                row['price'] = float(row['price'])
+                row['discount_pct'] = float(row['discount_pct'])
+                
+                INVENTORY.append(row)
+    except Exception as e:
+        print("Error loading CSV:", e)
+
+initialize_dummy_data()
+
 
 # ─── 1. GET /inventory ───────────────────────────────────────────────
 @app.route("/inventory", methods=["GET"])
 def get_inventory():
-    """Fetch all inventory items and recalculate live status fields."""
     try:
-        response = supabase.table("inventory").select("*").execute()
-        items = response.data
-
-        for item in items:
+        items = []
+        for item in INVENTORY:
             days = get_days_to_expiry(item["expiry_date"])
             item["days_to_expiry"] = days
-            item["status"] = get_status(days)
-
+            if item.get("status") != "redistributed":
+                item["status"] = get_status(days)
+            items.append(item)
         return jsonify({"success": True, "data": items}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -31,18 +65,17 @@ def get_inventory():
 # ─── 2. POST /inventory ──────────────────────────────────────────────
 @app.route("/inventory", methods=["POST"])
 def add_inventory():
-    """Add a new inventory item with auto-calculated fields."""
     try:
         data = request.get_json()
-
         required = ["name", "category", "qty", "unit", "price", "expiry_date"]
         for field in required:
             if field not in data:
                 return jsonify({"success": False, "error": f"Missing field: {field}"}), 400
 
         days = get_days_to_expiry(data["expiry_date"])
-
+        
         new_item = {
+            "id": str(uuid.uuid4()),
             "name": data["name"],
             "category": data["category"],
             "qty": float(data["qty"]),
@@ -53,14 +86,8 @@ def add_inventory():
             "status": get_status(days),
             "discount_pct": get_discount_pct(days),
         }
-
-        response = supabase.table("inventory").insert(new_item).execute()
-
-        return jsonify({
-            "success": True,
-            "message": "Item added successfully",
-            "data": response.data
-        }), 201
+        INVENTORY.append(new_item)
+        return jsonify({"success": True, "message": "Item added successfully", "data": [new_item]}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -68,10 +95,11 @@ def add_inventory():
 # ─── 2b. DELETE /inventory/<id> ──────────────────────────────────────
 @app.route("/inventory/<item_id>", methods=["DELETE"])
 def delete_inventory(item_id):
-    """Delete an inventory item by ID."""
     try:
-        response = supabase.table("inventory").delete().eq("id", item_id).execute()
-        if not response.data:
+        global INVENTORY
+        initial_len = len(INVENTORY)
+        INVENTORY = [i for i in INVENTORY if i["id"] != item_id]
+        if len(INVENTORY) == initial_len:
             return jsonify({"success": False, "error": "Item not found"}), 404
         return jsonify({"success": True, "message": "Item deleted"}), 200
     except Exception as e:
@@ -81,13 +109,9 @@ def delete_inventory(item_id):
 # ─── 3. GET /expiry-alerts ───────────────────────────────────────────
 @app.route("/expiry-alerts", methods=["GET"])
 def expiry_alerts():
-    """Return items expiring within 3 days (or already expired), sorted ascending."""
     try:
-        response = supabase.table("inventory").select("*").execute()
-        items = response.data
-
         alerts = []
-        for item in items:
+        for item in INVENTORY:
             days = get_days_to_expiry(item["expiry_date"])
             if days <= 3 and item.get("status") != "redistributed":
                 alerts.append({
@@ -96,9 +120,7 @@ def expiry_alerts():
                     "days_left": days,
                     "expiry_date": item["expiry_date"],
                 })
-
         alerts.sort(key=lambda x: x["days_left"])
-
         return jsonify({"success": True, "data": alerts}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -107,13 +129,11 @@ def expiry_alerts():
 # ─── 4. GET /discount-suggestions ────────────────────────────────────
 @app.route("/discount-suggestions", methods=["GET"])
 def discount_suggestions():
-    """Return items eligible for discount (0–7 days to expiry)."""
     try:
-        response = supabase.table("inventory").select("*").execute()
-        items = response.data
-
         suggestions = []
-        for item in items:
+        for item in INVENTORY:
+            if item.get("status") == "redistributed":
+                continue
             days = get_days_to_expiry(item["expiry_date"])
             if 0 <= days <= 7:
                 discount = get_discount_pct(days)
@@ -124,7 +144,6 @@ def discount_suggestions():
                     "discount_pct": discount,
                     "suggested_price": round(current_price * (1 - discount / 100), 2),
                 })
-
         return jsonify({"success": True, "data": suggestions}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -133,14 +152,8 @@ def discount_suggestions():
 # ─── 5. GET /waste-score ─────────────────────────────────────────────
 @app.route("/waste-score", methods=["GET"])
 def waste_score():
-    """Calculate waste score = (expired / total) * 100, excluding redistributed."""
     try:
-        response = supabase.table("inventory").select("*").execute()
-        all_items = response.data
-
-        # Exclude redistributed items
-        items = [i for i in all_items if i.get("status") != "redistributed"]
-
+        items = [i for i in INVENTORY if i.get("status") != "redistributed"]
         total = len(items)
         expired = 0
         safe = 0
@@ -175,43 +188,32 @@ def waste_score():
 # ─── 6. POST /redistribute ───────────────────────────────────────────
 @app.route("/redistribute", methods=["POST"])
 def redistribute():
-    """Mark an item as redistributed and log the donation."""
     try:
         data = request.get_json()
-
         item_id = data.get("item_id")
         ngo_name = data.get("ngo_name")
 
         if not item_id or not ngo_name:
             return jsonify({"success": False, "error": "item_id and ngo_name are required"}), 400
 
-        # Fetch the item first
-        item_resp = supabase.table("inventory").select("*").eq("id", item_id).execute()
-        if not item_resp.data:
+        item = next((i for i in INVENTORY if i["id"] == item_id), None)
+        if not item:
             return jsonify({"success": False, "error": "Item not found"}), 404
 
-        item = item_resp.data[0]
+        item["status"] = "redistributed"
+        item["discount_pct"] = 0
 
-        # Update inventory status
-        supabase.table("inventory").update({
-            "status": "redistributed",
-            "discount_pct": 0
-        }).eq("id", item_id).execute()
-
-        # Log the redistribution
         log_entry = {
+            "id": str(uuid.uuid4()),
             "item_name": item["name"],
             "qty": item["qty"],
             "ngo_name": ngo_name,
             "donated_at": datetime.now().isoformat(),
             "inventory_id": item_id,
         }
-        supabase.table("redistribution_log").insert(log_entry).execute()
+        REDISTRIBUTION_LOG.append(log_entry)
 
-        return jsonify({
-            "success": True,
-            "message": f"{item['name']} redistributed to {ngo_name}",
-        }), 200
+        return jsonify({"success": True, "message": f"{item['name']} redistributed to {ngo_name}"}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -219,15 +221,9 @@ def redistribute():
 # ─── 7. GET /redistribution-log ──────────────────────────────────────
 @app.route("/redistribution-log", methods=["GET"])
 def redistribution_log():
-    """Return all redistribution logs, most recent first."""
     try:
-        response = (
-            supabase.table("redistribution_log")
-            .select("*")
-            .order("donated_at", desc=True)
-            .execute()
-        )
-        return jsonify({"success": True, "data": response.data}), 200
+        sorted_logs = sorted(REDISTRIBUTION_LOG, key=lambda x: x["donated_at"], reverse=True)
+        return jsonify({"success": True, "data": sorted_logs}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -235,14 +231,8 @@ def redistribution_log():
 # ─── 8. GET /forecast ──────────────────────────────────────────────────
 @app.route("/forecast", methods=["GET"])
 def forecast_endpoint():
-    """Predict demand and generate recommendations using ML."""
     try:
-        response = supabase.table("inventory").select("*").execute()
-        items = response.data
-
-        # Generate ML forecast
-        results = get_forecast(items)
-
+        results = get_forecast(INVENTORY)
         return jsonify({"success": True, "data": results}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
